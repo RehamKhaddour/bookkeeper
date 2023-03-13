@@ -26,10 +26,11 @@ class categoriesList(QtWidgets.QWidget):
 
         self.set_tree(category_tree_getter=category_getter)
 
-    def build_category_tree(self,
-                            data: dict[str, dict] | None = None,
-                            parent: QtWidgets.QTreeWidgetItem | QtWidgets.QTreeWidget | None = None
-                            ) -> None:
+    def build_category_tree(
+            self,
+            data: dict[str, dict] | None = None,
+            parent: QtWidgets.QTreeWidgetItem | QtWidgets.QTreeWidget | None = None
+            ) -> None:
         for key, value in data.items():
             if not isinstance(key, str):
                 item = QtWidgets.QTreeWidgetItem(parent)
@@ -170,7 +171,8 @@ class elementEditCategory(QtWidgets.QWidget):
         self.layout = QtWidgets.QVBoxLayout()
         self.setLayout(self.layout)
 
-        self.add_category_title = QtWidgets.QLabel("Редактирование существующей категории")
+        self.add_category_title = QtWidgets.QLabel("Редактирование \
+                                                   существующей категории")
 
         self.layout.addWidget(self.add_category_title)
         self.layout.addWidget(editCategoryInput(category_editor=editor))

@@ -97,7 +97,8 @@ class SQLiteRepository(AbstractRepository[T]):
         con.close()
         return res
 
-    def get_all(self, where: dict[str, Any] | None = None, subquery: str | None = None) -> list[Optional[T]]:
+    def get_all(self, where: dict[str, Any] | None = None,
+                subquery: str | None = None) -> list[Optional[T]]:
         with sqlite3.connect(self.db_file) as con:
             cur = con.cursor()
             query = f"SELECT * FROM {self.table_name}"
@@ -152,7 +153,8 @@ class SQLiteRepository(AbstractRepository[T]):
         con.close()
 
     @classmethod
-    def repository_factory(cls, models: list[type], db_file: str | None = None) -> dict[type, type]:
+    def repository_factory(cls, models: list[type],
+                           db_file: str | None = None) -> dict[type, type]:
         """
         Создает хэш с таблицами по моделям данных (Паттерн AbstractFactory)
 

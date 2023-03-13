@@ -3,7 +3,6 @@
 """
 from datetime import datetime
 from PySide6 import QtWidgets, QtCore
-from dataclasses import dataclass
 from typing import Callable, Optional
 
 from bookkeeper.models.expense import Expense
@@ -59,7 +58,9 @@ class expensesList(QtWidgets.QWidget):
         for i, row in enumerate(data):
             self.expenses_table.setItem(
                 i, 0,
-                QtWidgets.QTableWidgetItem(datetime.strptime(row.expense_date, "%Y-%m-%d %H:%M:%S").strftime("%d-%m-%Y"))
+                QtWidgets.QTableWidgetItem(
+                    datetime.strptime(
+                        row.expense_date, "%Y-%m-%d %H:%M:%S").strftime("%d-%m-%Y"))
             )
             self.expenses_table.setItem(
                 i, 1,
@@ -108,7 +109,8 @@ class expensesList(QtWidgets.QWidget):
         pk = row + 1
         amount = float(self.expenses_table.item(row, 1).text())
         category = self.expenses_table.item(row, 2).text()
-        expense_date = datetime.strptime(self.expenses_table.item(row, 0).text(), "%d-%m-%Y")
+        expense_date = datetime.strptime(
+            self.expenses_table.item(row, 0).text(), "%d-%m-%Y")
         comment = self.expenses_table.item(row, 3).text()
         if column == 1:
             old_value = self.db_expense_getter(pk)
@@ -196,7 +198,9 @@ class elementAddExpense(QtWidgets.QWidget):
         self.add_btn.clicked.connect(self.save_btn_clicked)
 
         self.add_amount = addAmountElement()
-        self.choose_category = chooseCategoryElement(category_list_getter=get_category_list)
+        self.choose_category = chooseCategoryElement(
+            category_list_getter=get_category_list
+            )
         self.add_comment = addCommentElement()
 
         self.layout.addWidget(self.add_expense_title)
@@ -246,4 +250,3 @@ class expensesPage(QtWidgets.QWidget):
             budgets_editor=edit_budgets_handler
         )
         self.layout.addWidget(self.add_expense)
-

@@ -58,3 +58,11 @@ class AbstractRepository(ABC, Generic[T]):
     @abstractmethod
     def delete(self, pk: int) -> None:
         """ Удалить запись """
+
+    @classmethod
+    def repository_factory(
+        cls,
+        models: list[type],
+        db_file: str | None = None
+    ) -> dict[type, type]:
+        """ создает словарь репозиториев для каждой из моделей"""
