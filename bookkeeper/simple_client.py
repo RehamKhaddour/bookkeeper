@@ -5,10 +5,21 @@
 from bookkeeper.models.category import Category
 from bookkeeper.models.expense import Expense
 from bookkeeper.repository.memory_repository import MemoryRepository
+from bookkeeper.repository.sqlite_repository import SqliteRepository
 from bookkeeper.utils import read_tree
 
-cat_repo = MemoryRepository[Category]()
-exp_repo = MemoryRepository[Expense]()
+MODE = 'Sqlite'
+CAT_REPO = None
+EXP_REPO = None
+
+if MODE == 'Memory':
+    CAT_REPO = MemoryRepository[Category]()
+    EXP_REPO = MemoryRepository[Expense]()
+elif MODE == 'Sqlite':
+    DB_PATH_NAME = 'bookkeeper/databases/test.db'
+    CAT_REPO = SqliteRepository(DB_PATH_NAME, Category)
+    EXP_REPO = SqliteRepository(DB_PATH_NAME, Expense)
+
 
 cats = '''
 продукты
@@ -20,7 +31,7 @@ cats = '''
 одежда
 '''.splitlines()
 
-Category.create_from_tree(read_tree(cats), cat_repo)
+Category.create_from_tree(read_tree(cats), CAT_REPO)
 
 while True:
     try:
@@ -30,16 +41,16 @@ while True:
     if not cmd:
         continue
     if cmd == 'категории':
-        print(*cat_repo.get_all(), sep='\n')
+        print(*CAT_REPO.get_all(), sep='\n')
     elif cmd == 'расходы':
-        print(*exp_repo.get_all(), sep='\n')
+        print(*EXP_REPO.get_all(), sep='\n')
     elif cmd[0].isdecimal():
         amount, name = cmd.split(maxsplit=1)
         try:
-            cat = cat_repo.get_all({'name': name})[0]
+            cat = CAT_REPO.get_all({'name': name})[0]
         except IndexError:
             print(f'категория {name} не найдена')
             continue
         exp = Expense(int(amount), cat.pk)
-        exp_repo.add(exp)
+        EXP_REPO.add(exp)
         print(exp)

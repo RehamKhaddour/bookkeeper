@@ -1,165 +1,207 @@
-"""
-Модель реализует репозиторий, работающий с СУБД sqlite
-"""
-from inspect import get_annotations
-import sqlite3
-from typing import Any, Optional
+""" This module contains the SqliteRepository class, which implements
+    the AbstractRepository class for SQLite databases.
 
+Classes:
+
+    SqliteRepository: Implements the abstract methods of the AbstractRepository class for
+    SQLite databases.
+
+Functions:
+
+    None """
+
+import os
+import sqlite3
+from typing import Any, Dict, List, Optional, Type, cast
+
+from bookkeeper.models.category import Category
+from bookkeeper.models.expense import Expense
 from bookkeeper.repository.abstract_repository import AbstractRepository, T
 
 
-DB_FILE = 'bookkeeper/databases/client.sqlite.db'
+class SqliteRepository(AbstractRepository[T]):
+    """ This class implements the AbstractRepository class for SQLite databases.
+    It provides methods to add, get, get_all, update and delete records from the
+    SQLite database for two models: Category and Expense.
 
+Attributes:
 
-class SQLiteRepository(AbstractRepository[T]):
-    """
-    Класс репозитория, работающий с sqlite
-    Методы:
-        CRUD - add, get, update, delete, get_all
-        Работа с таблицами - create_table, drop_table
-        Адаптер для парсинга данных с СУБД - __parse_query_to_class
-    """
+    conn (sqlite3.Connection): The SQLite database connection.
+    cursor (sqlite3.Cursor): The SQLite database cursor.
+    model_class (Type[T]): The type of model (Category or Expense) that
+                           this repository is working with.
 
-    db_file: str
-    table_name: str
-    cls: type
-    fields: dict[str, type]
+Methods:
 
-    def __init__(self, cls: type, db_file: str = DB_FILE) -> None:
-        self.db_file = db_file
-        self.table_name = cls.__name__.lower()
-        self.fields = get_annotations(cls, eval_str=True)
-        self.fields.pop('pk')
-        self.cls = cls
-        self.create_table()
+    init(self, db_path: str, model_class: Type[T]): Initializes the SQLite database
+        connection and creates the table for the corresponding model if it doesn’t
+        exist already.
+    add(self, obj: T) -> int: Adds a new record to the database for the given model.
+    get(self, pk: int) -> Optional[T]: Retrieves a record from the database with the
+        given primary key for the given model.
+    get_all(self, where: Optional[Dict[str, Any]] = None) -> List[T]: Retrieves all
+        records from the database for the given model. If a where dictionary is given,
+        it is used to filter the results.
+    delete(self, pk: int) -> None: Deletes a record from the database with the given
+        primary key for the given model.
+    update(self, obj: T) -> None: Updates a record in the database with the given object
+        for the given model.
+    get_category_by_name(self, name: str) -> Optional[Category]: Retrieves a category
+        record from the database with the given name.
 
-    def reset_db_file(self, db_file: str = DB_FILE) -> None:
-        """
-        Функия меняет файл для сохранения базы данных (БЕЗ переноса данных!)
-        """
-        self.drop_table()
-        self.db_file = db_file
-        self.create_table()
+Raises:
 
-    def create_table(self) -> None:
-        """
-        Создает таблицу в базе данных, если она не существует
-        """
-        with sqlite3.connect(self.db_file) as con:
-            cur = con.cursor()
-            query = f"CREATE TABLE IF NOT EXISTS {self.table_name} "
-            query += "(pk INTEGER PRIMARY KEY, "
-            query += ', '.join(list(self.fields.keys())) + ')'
-            cur.execute(query)
-        con.close()
+    ValueError: If the database file doesn’t exist or if there is an error
+        opening the database.
+    TypeError: If an unsupported object type is used.
 
-    def __parse_query_to_class(self, query: tuple[Any] | None) -> Optional[T] | None:
-        if query is not None:
-            query_dict = dict(zip({"pk": int} | self.fields, query))
-            out = self.cls(**query_dict)
+"""
+
+    def __init__(self, db_path: str, model_class: Type[T]):
+        if not os.path.isfile(db_path):
+            raise ValueError(f"Database file {db_path} does not exist")
+
+        try:
+            self.conn = sqlite3.connect(db_path)
+            self.cursor = self.conn.cursor()
+        except sqlite3.Error as error:
+            raise ValueError(f"Failed to open database {db_path}: {error}") from error
+        self.model_class = model_class
+        if self.model_class == Category:
+            # create table for categories
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS categories (
+                    pk INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    parent INTEGER REFERENCES categories(pk)
+                )
+            """)
+        elif self.model_class == Expense:
+            # create table for expenses
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS expenses (
+                    pk INTEGER PRIMARY KEY AUTOINCREMENT,
+                    amount INTEGER NOT NULL,
+                    category INTEGER NOT NULL,
+                    expense_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    added_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    comment TEXT,
+                    FOREIGN KEY (category) REFERENCES categories (pk) ON DELETE CASCADE
+                )
+            """)
         else:
-            out = None
-        return out
+            raise ValueError(f"Unsupported model class: {self.model_class.__name__}")
 
-    def drop_table(self) -> None:
-        """
-        Удаляет таблицу из базы данных
-        """
-        with sqlite3.connect(self.db_file) as con:
-            cur = con.cursor()
-            cur.execute(f"DROP TABLE IF EXISTS {self.table_name}")
-        con.close()
+        self.conn.commit()
 
     def add(self, obj: T) -> int:
-        if getattr(obj, 'pk', None) != 0:
-            raise ValueError(f'trying to add object {obj} with filled `pk` attribute')
-        names = ', '.join(self.fields.keys())
-        placeholders = ', '.join("?" * len(self.fields))
-        values = [getattr(obj, x) for x in self.fields]
-        with sqlite3.connect(self.db_file) as con:
-            cur = con.cursor()
-            cur.execute('PRAGMA foreign_keys = ON')
-            cur.execute(
-                f'INSERT INTO {self.table_name} ({names}) VALUES ({placeholders})',
-                values
-            )
-            obj.pk = cur.lastrowid
-        con.close()
-        return obj.pk
+        if isinstance(obj, Category):
+            # check if the category already exists in the table
+            existing_category = self.get_category_by_name(obj.name)
+            if existing_category:
+                return existing_category.pk
 
-    def get(self, pk: int) -> T | None:
-        with sqlite3.connect(self.db_file) as con:
-            cur = con.cursor()
-            raw_res = cur.execute(
-                f"SELECT * FROM {self.table_name} WHERE pk={pk}"
-            )
-            res = self.__parse_query_to_class(raw_res.fetchone())
-        con.close()
-        return res
+            # if not, insert the new category
+            self.cursor.execute("INSERT INTO categories (name, parent) VALUES (?, ?)",
+                                (obj.name, obj.parent))
+            self.conn.commit()
+            obj.pk = cast(int, self.cursor.lastrowid)
+            return obj.pk
 
-    def get_all(self, where: dict[str, Any] | None = None,
-                subquery: str | None = None) -> list[Optional[T]]:
-        with sqlite3.connect(self.db_file) as con:
-            cur = con.cursor()
-            query = f"SELECT * FROM {self.table_name}"
+        if isinstance(obj, Expense):
+            self.cursor.execute(
+                "INSERT INTO expenses (amount, category, comment) VALUES (?, ?, ?)",
+                (obj.amount, obj.category, obj.comment)
+            )
+            self.conn.commit()
+            obj.pk = cast(int, self.cursor.lastrowid)
+            return obj.pk
+
+        raise TypeError("Unsupported object type")
+
+    def get_category_by_name(self, name: str) -> Optional[Category]:
+        """
+        The get_category_by_name method takes in a name string as a parameter and returns
+        either a Category object if a category with the given name exists in the
+        categories table, or None otherwise.
+
+        Parameters:
+
+        name (str): The name of the category to be searched for in the database.
+
+        Returns:
+
+        Optional[Category]: If a category with the given name exists in the database,
+            return a Category object with the primary key (pk), name, and parent category
+            (if applicable) set to the corresponding values from the categories table.
+            If a category with the given name does not exist in the database, return None
+        """
+        self.cursor.execute("SELECT * FROM categories WHERE name=?", (name,))
+        row = self.cursor.fetchone()
+        if row:
+            return Category(pk=row[0], name=row[1], parent=row[2])
+        return None
+
+    def get(self, pk: int) -> Optional[T]:
+        if self.model_class == Category:
+            self.cursor.execute("SELECT * FROM categories WHERE pk=?", (pk,))
+            row = self.cursor.fetchone()
+            if row:
+                return Category(pk=row[0], name=row[1], parent=row[2])
+        elif self.model_class == Expense:
+            self.cursor.execute("SELECT * FROM expenses WHERE pk=?", (pk,))
+            row = self.cursor.fetchone()
+            if row:
+                return Expense(pk=row[0], amount=row[1], category=row[2],
+                               expense_date=row[3], added_date=row[4], comment=row[5])
+
+        return None
+
+    def get_all(self, where: Optional[Dict[str, Any]] = None) -> List[T]:
+        if self.model_class == Category:
+            query = "SELECT * FROM categories"
             if where is not None:
-                query += " WHERE " + ' AND '.join(
-                    [f"{key} = {value}"
-                     for key, value in where.items()
-                     if value is not None
-                     and isinstance(value, int) or isinstance(value, float)] +
-                    [f"{key} = '{value}'"
-                     for key, value in where.items()
-                     if value is not None
-                     and not (isinstance(value, int) or isinstance(value, float))]
-                )
-            if subquery is not None:
-                query += " " + subquery
+                conditions = " AND ".join(f"{key} = ?" for key in where.keys())
+                query += f" WHERE {conditions}"
+                self.cursor.execute(query, tuple(where.values()))
+            else:
+                self.cursor.execute(query)
+            return [Category(pk=row[0], name=row[1], parent=row[2])
+                    for row in self.cursor.fetchall()]
+        if self.model_class == Expense:
+            query = "SELECT * FROM expenses"
+            if where is not None:
+                conditions = " AND ".join(f"{key} = ?" for key in where.keys())
+                query += f" WHERE {conditions}"
+                self.cursor.execute(query, tuple(where.values()))
+            else:
+                self.cursor.execute(query)
+            return [Expense(pk=row[0], amount=row[1], category=row[2],
+                            expense_date=row[3], added_date=row[4],
+                            comment=row[5]) for row in self.cursor.fetchall()]
 
-            raw_res = cur.execute(query)
-            res = raw_res.fetchall()
-        con.close()
-        out = [self.__parse_query_to_class(res[pk]) for pk in range(len(res))]
-        return out
-
-    def update(self, obj: T) -> None:
-        if obj.pk == 0:
-            raise ValueError('attempt to update object with unknown primary key')
-        with sqlite3.connect(self.db_file) as con:
-            cur = con.cursor()
-            sql_query = f"UPDATE {self.table_name} SET "
-            sql_query += ','.join(
-                [f"{attr} = {val}"
-                 for attr, val in obj.__dict__.items()
-                 if attr != 'pk' and val is not None
-                 and isinstance(val, int) or isinstance(val, float)] +
-                [f"{attr} = '{val}'"
-                 for attr, val in obj.__dict__.items()
-                 if attr != 'pk' and val is not None
-                 and not (isinstance(val, int) or isinstance(val, float))]
-            )
-            sql_query += f" WHERE pk={obj.pk}"
-            cur.execute(sql_query)
-        con.close()
+        return []
 
     def delete(self, pk: int) -> None:
-        if pk == 0:
-            raise ValueError('attempt to update object with unknown primary key')
-        with sqlite3.connect(self.db_file) as con:
-            cur = con.cursor()
-            cur.execute(
-                f"DELETE FROM {self.table_name} WHERE pk={pk}"
+        if self.model_class == Category:
+            self.cursor.execute("DELETE FROM categories WHERE pk=?", (pk,))
+            self.conn.commit()
+        elif self.model_class == Expense:
+            self.cursor.execute("DELETE FROM expenses WHERE pk=?", (pk,))
+            self.conn.commit()
+        else:
+            raise TypeError("Unsupported object type")
+
+    def update(self, obj: T) -> None:
+        if isinstance(obj, Category):
+            self.cursor.execute("UPDATE categories SET name=?, parent=? WHERE pk=?",
+                                (obj.name, obj.parent, obj.pk))
+            self.conn.commit()
+        elif isinstance(obj, Expense):
+            self.cursor.execute(
+                "UPDATE expenses SET amount=?, category=?, comment=? WHERE pk=?",
+                (obj.amount, obj.category, obj.comment, obj.pk)
             )
-        con.close()
-
-    @classmethod
-    def repository_factory(cls, models: list[type],
-                           db_file: str | None = None) -> dict[type, type]:
-        """
-        Создает хэш с таблицами по моделям данных (Паттерн AbstractFactory)
-
-        :param models: список классов, описывающих аннотацию типов в таблице
-        :param db_file: относительный путь к СУБД
-        :return: хэш с репозиториями для классов-аннотаций
-        """
-        return {model: cls(model, db_file) for model in models}
+            self.conn.commit()
+        else:
+            raise TypeError("Unsupported object type")

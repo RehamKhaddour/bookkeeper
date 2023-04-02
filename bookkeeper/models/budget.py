@@ -1,22 +1,9 @@
-"""
-Модель бюджета по категории расходов
-"""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
-
-@dataclass
+@dataclass(slots=True)
 class Budget:
-    """
-    Бюджет по категории товаров, хранит срок (duration), на который установлен бюджет,
-    id категории, к которой относится бюджет (category),
-    и сумма бюджета на данный срок (amount)
-    pk - id записи в базе данных
-    """
 
-    amount: float
-    limits: float
-    duration: str
-    expiration_date: datetime
-    start_date: datetime = datetime.now()
+    budget: int = 0
     pk: int = 0
+    added_date: datetime = field(default_factory=datetime.now)
